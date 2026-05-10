@@ -637,7 +637,11 @@ async function syncSheets(){
     const sa=JSON.parse(sheetCfg.sj);const token=await getToken(sa);
     const rows=[['日付','カテゴリ','支払い者','内容','金額','ステータス','精算日','メモ','領収書'],
       ...exps.map(e=>{const cat=gc(e.catId);return[e.date,cat.name,e.payer||'',e.name,e.amount,stLbl(e.status),e.settledAt||'',e.memo||'',e.receipt?'あり':'なし'];})];
-    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/Sheet1!A1:I${rows.length}?valueInputOption=RAW`,
+    // シート名を取得してから書き込む
+    const metaRes=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties.title`,{headers:{'Authorization':'Bearer '+token}});
+    const meta=await metaRes.json();
+    const sheetName=meta.sheets?.[0]?.properties?.title||'Sheet1';
+    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A1:I${rows.length}?valueInputOption=RAW`,
       {method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({values:rows})});
     if(res.ok){msg('sync-msg','✓ '+(rows.length-1)+'件を同期しました','g');}
     else{const err=await res.json();msg('sync-msg','エラー: '+(err.error?.message||res.status),'r');}
