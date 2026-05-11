@@ -566,7 +566,28 @@ function renderCurrentScreen(){
   const id=active.id.replace('screen-','');
   if(id==='home')renderHome();
   if(id==='history')renderHistory();
-  if(id==='admin')renderAdmin();
+  // admin画面はポーリング時に設定欄を含む全体を再描画しない（入力中に消えるのを防ぐ）
+  // 経費リスト部分だけ更新する
+  if(id==='admin')renderAdminData();
+}
+
+// 設定欄は触らず経費データ部分だけ更新する軽量版
+function renderAdminData(){
+  const tot=exps.reduce((s,e)=>s+e.amount,0);
+  const pend=exps.filter(e=>e.status==='pending');
+  const appr=exps.filter(e=>e.status==='approved');
+  const setl=exps.filter(e=>e.status==='settled');
+  const statsEl=document.getElementById('admin-stats');
+  if(statsEl)statsEl.innerHTML=`
+    <div class="stat-card full"><div class="stat-lbl">全期間合計</div><div class="stat-val">${fmt(tot)}</div></div>
+    <div class="stat-card"><div class="stat-lbl">承認済み（未精算）</div><div class="stat-val" style="color:var(--green);">${appr.length}件</div></div>
+    <div class="stat-card"><div class="stat-lbl">申請中</div><div class="stat-val" style="color:#ff9500;">${pend.length}件</div></div>
+    <div class="stat-card"><div class="stat-lbl">精算済み</div><div class="stat-val" style="color:var(--purple);">${setl.length}件</div></div>
+    <div class="stat-card"><div class="stat-lbl">精算済み合計</div><div class="stat-val" style="font-size:16px;">${fmt(setl.reduce((s,e)=>s+e.amount,0))}</div></div>`;
+  const pendEl=document.getElementById('admin-pending');
+  if(pendEl)pendEl.innerHTML=pend.length?pend.map(e=>expCard(e,true)).join(''):'<div style="text-align:center;padding:14px;color:var(--text2);font-size:13px;">承認待ちはありません</div>';
+  const allEl=document.getElementById('admin-all');
+  if(allEl)allEl.innerHTML=exps.length?exps.map(e=>expCard(e,true)).join(''):'<div style="text-align:center;padding:14px;color:var(--text2);font-size:13px;">データなし</div>';
 }
 
 function handleAdmin(){if(adminOn){showScreen('admin');}else{pcIn='';updDots();document.getElementById('pc-error').textContent='';showScreen('passcode');}}
@@ -793,14 +814,23 @@ function renderAdmin(){
     </div>`;
   }).join('');
   const sOk=sheetCfg.id&&sheetCfg.sj;
-  document.getElementById('sheet-id').value=sheetCfg.id||'';
-  document.getElementById('sa-json').value=sheetCfg.sj||'';
-  document.getElementById('drive-folder-id').value=sheetCfg.driveFolderId||'';
+  const sheetFields=['sheet-id','sa-json','drive-folder-id'];
+  const sheetFocused=sheetFields.some(id=>document.activeElement===document.getElementById(id));
+  if(!sheetFocused){
+    document.getElementById('sheet-id').value=sheetCfg.id||'';
+    document.getElementById('sa-json').value=sheetCfg.sj||'';
+    document.getElementById('drive-folder-id').value=sheetCfg.driveFolderId||'';
+  }
   document.getElementById('sheets-status').innerHTML=sOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> 設定済み・自動同期中</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
-  document.getElementById('notify-email').value=emailCfg.notifyEmail||'';
-  document.getElementById('ejs-pubkey').value=emailCfg.pubKey||'';
-  document.getElementById('ejs-svcid').value=emailCfg.svcId||'';
-  document.getElementById('ejs-tmplid').value=emailCfg.tmplId||'';
+  // フォーカス中の入力欄は上書きしない（入力中に消えるのを防ぐ）
+  const emailFields=['notify-email','ejs-pubkey','ejs-svcid','ejs-tmplid'];
+  const emailFocused=emailFields.some(id=>document.activeElement===document.getElementById(id));
+  if(!emailFocused){
+    document.getElementById('notify-email').value=emailCfg.notifyEmail||'';
+    document.getElementById('ejs-pubkey').value=emailCfg.pubKey||'';
+    document.getElementById('ejs-svcid').value=emailCfg.svcId||'';
+    document.getElementById('ejs-tmplid').value=emailCfg.tmplId||'';
+  }
   const eOk=emailCfg.pubKey&&emailCfg.svcId&&emailCfg.tmplId&&emailCfg.notifyEmail;
   document.getElementById('email-status').innerHTML=eOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> メール通知設定済み</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
   const pt={};exps.forEach(e=>{pt[e.payer]=(pt[e.payer]||0)+e.amount;});
@@ -815,6 +845,12 @@ function renderAdmin(){
     const cat=gc(cid);const col=gcol(cat);
     return `<div class="chart-row"><span class="chart-lbl">${cat.name}</span><div class="chart-bg"><div class="chart-fill" style="width:${Math.round(amt/mc*100)}%;background:${col.bar};"></div></div><span class="chart-amt">${fmt(amt)}</span></div>`;
   }).join(''):'<div style="color:var(--text2);font-size:13px;text-align:center;padding:12px;">データなし</div>';
+  // パスコード欄もフォーカス中は上書きしない
+  const pcFocused=['new-pc','new-pc2'].some(id=>document.activeElement===document.getElementById(id));
+  if(!pcFocused){
+    document.getElementById('new-pc').value='';
+    document.getElementById('new-pc2').value='';
+  }
   document.getElementById('member-list').innerHTML=mbrs.map((m,i)=>{
     const c=AC[i%AC.length];
     return `<div class="mbr-row"><div class="avatar" style="width:36px;height:36px;font-size:13px;background:${c.bg};color:${c.t};">${ini(m)}</div><div style="flex:1;font-size:14px;font-weight:600;">${m}</div>${mbrs.length>1?`<button class="ic-btn" onclick="delMember(${i})"><i class="ti ti-trash"></i></button>`:''}</div>`;
