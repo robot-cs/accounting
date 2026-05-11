@@ -50,7 +50,8 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
 .tab i{font-size:22px;}
 .tab.active{color:var(--blue);}
 .tab.admin-tab.active{color:var(--red);}
-.screen{display:none;}.screen.active{display:block;}
+.screen{display:none;}
+.screen.active{display:block;}
 .card{background:var(--surface);border-radius:var(--r);border:0.5px solid var(--border);padding:14px;margin-bottom:10px;}
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
 .stat-card{background:var(--surface2);border-radius:var(--r-sm);padding:12px;}
@@ -112,11 +113,9 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
 .mbr-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border);}
 .mbr-row:last-child{border-bottom:none;}
 .warn-box{background:var(--amber-bg);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;color:var(--amber-t);margin-bottom:10px;line-height:1.6;}
-.info-box{background:var(--blue-bg);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;color:var(--blue-t);margin-bottom:10px;line-height:1.6;}
 .sync-pill{font-size:12px;padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;}
 .s-ok{background:var(--green-bg);color:var(--green-t);}
 .s-info{background:var(--blue-bg);color:var(--blue-t);}
-.s-err{background:var(--red-bg);color:var(--red-t);}
 .empty{text-align:center;padding:40px 20px;color:var(--text2);font-size:14px;}
 .empty i{font-size:40px;display:block;margin-bottom:10px;opacity:0.35;}
 .msg-ln{text-align:center;font-size:13px;min-height:18px;margin-top:10px;}
@@ -131,6 +130,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
 .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;align-items:flex-end;justify-content:center;}
 .modal-ov.open{display:flex;}
 .modal-box{background:var(--surface);border-radius:var(--r) var(--r) 0 0;padding:16px;width:100%;max-height:88vh;overflow-y:auto;}
+.modal-center{align-items:center;}
 .modal-center .modal-box{border-radius:var(--r);margin:auto;max-width:340px;}
 .sf-bar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
 .sf-pill{padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:0.5px solid var(--border2);background:var(--surface2);color:var(--text2);}
@@ -140,21 +140,16 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
 .settle-chk{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface2);}
 .settle-chk.chk{background:var(--purple);border-color:var(--purple);color:#fff;}
 .info-note{font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--surface2);border-radius:var(--r-sm);}
-.cloud-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border-radius:var(--r-sm);margin-bottom:10px;font-size:12px;color:var(--text2);}
-.spinning{animation:spin 1s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 <div id="app">
   <div class="hdr">
     <span class="hdr-title" id="hdr-title">経費精算</span>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span id="cloud-status" style="font-size:18px;color:var(--text3);" title="同期状態"></span>
-      <span id="hdr-right" class="hdr-sub"></span>
-    </div>
+    <span id="hdr-right" class="hdr-sub"></span>
   </div>
   <div class="content">
+    <!-- HOME -->
     <div class="screen active pad" id="screen-home">
       <div class="stat-grid">
         <div class="stat-card full"><div class="stat-lbl">今月の合計経費</div><div class="stat-val" id="total-amount">¥0</div></div>
@@ -168,7 +163,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
       <div class="sec-title">最近の経費</div>
       <div id="recent-list"></div>
     </div>
-
+    <!-- ADD -->
     <div class="screen pad" id="screen-add">
       <div class="card">
         <div class="frow"><div class="flbl">カテゴリ</div><div class="grid2" id="cat-grid"></div></div>
@@ -190,7 +185,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
       <button class="btn btn-blue" onclick="addExpense()"><i class="ti ti-plus"></i> 経費を追加する</button>
       <div class="msg-ln" id="add-msg"></div>
     </div>
-
+    <!-- HISTORY -->
     <div class="screen pad" id="screen-history">
       <div class="sf-bar">
         <div class="sf-pill active" onclick="setFilter(this,'all')">すべて</div>
@@ -203,7 +198,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
       <div class="info-note"><i class="ti ti-info-circle"></i> 削除・ステータス変更は管理者のみ行えます</div>
       <div id="history-list"></div>
     </div>
-
+    <!-- PASSCODE -->
     <div class="screen" id="screen-passcode">
       <div class="pc-wrap">
         <i class="ti ti-shield-lock" style="font-size:44px;color:var(--blue);"></i>
@@ -223,7 +218,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
         </div>
       </div>
     </div>
-
+    <!-- ADMIN -->
     <div class="screen pad" id="screen-admin">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <span style="font-size:13px;font-weight:600;color:var(--red);"><i class="ti ti-shield"></i> 管理者モード</span>
@@ -238,7 +233,9 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
         <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">チェックして一括精算できます</div>
         <div id="settle-list"></div>
         <div id="settle-actions" style="display:none;margin-top:12px;">
-          <div style="margin-bottom:10px;font-size:13px;color:var(--text2);">選択: <strong id="settle-count">0</strong>件 · <strong id="settle-total" style="color:var(--purple-t);">¥0</strong></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:13px;color:var(--text2);">選択: <strong id="settle-count">0</strong>件 · <strong id="settle-total" style="color:var(--purple-t);">¥0</strong></span>
+          </div>
           <button class="btn btn-purple" onclick="bulkSettle()"><i class="ti ti-checks"></i> 選択した経費を精算済みにする</button>
         </div>
       </div>
@@ -249,19 +246,18 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
         <div id="cat-list"></div>
         <button class="btn btn-sec" style="margin-top:10px;" onclick="openCatModal(null)"><i class="ti ti-plus"></i> カテゴリを追加</button>
       </div>
-      <div class="sec-title">Google Sheets 設定（データ共有）</div>
+      <div class="sec-title">Google Sheets 連携</div>
       <div class="card">
-        <div class="info-box"><i class="ti ti-info-circle"></i> ここに設定したSheetsがスマホ・PCの共有データベースになります。経費を追加・更新するたびに自動同期されます。</div>
         <div id="sheets-status" style="margin-bottom:10px;"></div>
         <div class="frow"><label class="flbl">Spreadsheet ID</label><input class="finput" id="sheet-id" type="text" placeholder="スプレッドシートのIDを貼り付け"></div>
         <div class="frow">
           <label class="flbl">Service Account JSON</label>
           <div class="warn-box"><i class="ti ti-alert-triangle"></i> このキーは厳重に管理してください。</div>
-          <textarea class="ta-input" id="sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
+          <textarea class="ta-input" id="sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"...'></textarea>
         </div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-blue" style="flex:1;" onclick="saveSheetCfg()">設定を保存</button>
-          <button class="btn btn-sec" style="flex:1;" onclick="manualSync()"><i class="ti ti-refresh"></i> 今すぐ読み込む</button>
+          <button class="btn btn-sec" style="flex:1;" onclick="syncSheets()"><i class="ti ti-upload"></i> 今すぐ同期</button>
         </div>
         <div class="msg-ln" id="sync-msg"></div>
       </div>
@@ -300,6 +296,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
   </div>
 </div>
 
+<!-- カテゴリ編集モーダル -->
 <div class="modal-ov" id="cat-modal" onclick="closeCatModal()">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -318,6 +315,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
   </div>
 </div>
 
+<!-- 領収書モーダル -->
 <div class="modal-ov modal-center" id="rcpt-modal" onclick="closeRcptModal()">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -344,28 +342,26 @@ const DEF_CATS=[
   {id:'c5',name:'消耗品',icon:'ti-package',ci:4},{id:'c6',name:'その他',icon:'ti-dots',ci:5},
 ];
 
-// ---- State ----
 let exps=[],mbrs=[],cats=[],selCat='',selPayer='',adminOn=false,pcIn='';
 let sheetCfg={id:'',sj:''},pendRcpt=null,editCatId=null,picIcon=ICONS[0],picCI=0;
 let hisFilter='all',settleIds=new Set();
-let cachedToken=null,tokenExpiry=0,sheetName='Sheet1';
-let syncTimer=null,isSyncing=false;
 
-// ---- Persist local config (not expense data) ----
-function loadCfg(){
+function load(){
   try{
-    mbrs=JSON.parse(localStorage.getItem('mbr_v8')||'["山田太郎","佐藤花子"]');
-    cats=JSON.parse(localStorage.getItem('cats_v8')||'null')||JSON.parse(JSON.stringify(DEF_CATS));
+    exps=JSON.parse(localStorage.getItem('exp_v7')||'[]');
+    mbrs=JSON.parse(localStorage.getItem('mbr_v7')||'["山田太郎","佐藤花子"]');
+    cats=JSON.parse(localStorage.getItem('cats_v7')||'null')||JSON.parse(JSON.stringify(DEF_CATS));
     const sc=JSON.parse(localStorage.getItem('sheet_cfg')||'{}');
     sheetCfg={id:sc.id||'',sj:sc.saJson||''};
-  }catch(e){mbrs=['山田太郎','佐藤花子'];cats=JSON.parse(JSON.stringify(DEF_CATS));sheetCfg={id:'',sj:''};}
+  }catch(e){exps=[];mbrs=['山田太郎','佐藤花子'];cats=JSON.parse(JSON.stringify(DEF_CATS));sheetCfg={id:'',sj:''};}
   if(!mbrs.length)mbrs=['山田太郎','佐藤花子'];
   if(!cats.length)cats=JSON.parse(JSON.stringify(DEF_CATS));
-  selCat=cats[0].id;selPayer=mbrs[0];
+  selCat=cats[0].id; selPayer=mbrs[0];
 }
-function saveCfg(){
-  localStorage.setItem('mbr_v8',JSON.stringify(mbrs));
-  localStorage.setItem('cats_v8',JSON.stringify(cats));
+function save(){
+  localStorage.setItem('exp_v7',JSON.stringify(exps));
+  localStorage.setItem('mbr_v7',JSON.stringify(mbrs));
+  localStorage.setItem('cats_v7',JSON.stringify(cats));
 }
 function getPC(){return localStorage.getItem('admin_pc')||'1234';}
 function fmt(n){return '¥'+Math.round(n).toLocaleString('ja-JP');}
@@ -375,111 +371,8 @@ function gc(id){return cats.find(c=>c.id===id)||{name:'不明',icon:'ti-dots',ci
 function gcol(c){return COLORS[c.ci]||COLORS[0];}
 function stLbl(s){return{pending:'申請中',approved:'承認済み',rejected:'却下',settled:'精算済み'}[s]||s;}
 function stBadge(s){return{pending:'b-pending',approved:'b-approved',rejected:'b-rejected',settled:'b-settled'}[s]||'b-pending';}
-function setMsg(id,txt,c){const el=document.getElementById(id);if(!el)return;el.textContent=txt;el.style.color=c==='r'?'var(--red)':c==='g'?'var(--green)':c==='p'?'var(--purple-t)':'var(--text2)';setTimeout(()=>{if(el)el.textContent='';},3000);}
-function setCloudStatus(state){
-  const el=document.getElementById('cloud-status');if(!el)return;
-  if(state==='ok'){el.innerHTML='<i class="ti ti-cloud-check" style="color:var(--green);"></i>';}
-  else if(state==='sync'){el.innerHTML='<i class="ti ti-cloud-upload spinning" style="color:var(--blue);"></i>';}
-  else if(state==='err'){el.innerHTML='<i class="ti ti-cloud-x" style="color:var(--red);"></i>';}
-  else{el.innerHTML='<i class="ti ti-cloud-off" style="color:var(--text3);"></i>';}
-}
+function msg(id,txt,c){const el=document.getElementById(id);if(!el)return;el.textContent=txt;el.style.color=c==='r'?'var(--red)':c==='g'?'var(--green)':c==='p'?'var(--purple-t)':'var(--text2)';setTimeout(()=>{if(el)el.textContent='';},2500);}
 
-// ---- Google Sheets API ----
-async function getToken(){
-  if(cachedToken&&Date.now()<tokenExpiry)return cachedToken;
-  const sa=JSON.parse(sheetCfg.sj);
-  const now=Math.floor(Date.now()/1000);
-  const b64u=s=>btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  const unsigned=b64u({alg:'RS256',typ:'JWT'})+'.'+b64u({iss:sa.client_email,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
-  const b64=sa.private_key.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
-  const buf=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
-  const key=await crypto.subtle.importKey('pkcs8',buf,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
-  const sig=await crypto.subtle.sign({name:'RSASSA-PKCS1-v1_5'},key,new TextEncoder().encode(unsigned));
-  const jwt=unsigned+'.'+btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion='+jwt});
-  const data=await res.json();
-  if(!data.access_token)throw new Error(data.error_description||'Token取得失敗');
-  cachedToken=data.access_token;tokenExpiry=Date.now()+3500*1000;
-  return cachedToken;
-}
-
-async function getSheetName(){
-  const token=await getToken();
-  const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties.title`,{headers:{'Authorization':'Bearer '+token}});
-  const data=await res.json();
-  return data.sheets?.[0]?.properties?.title||'Sheet1';
-}
-
-// Sheetsからデータを読み込む
-async function loadFromSheets(){
-  if(!sheetCfg.id||!sheetCfg.sj)return false;
-  if(isSyncing)return false;
-  isSyncing=true;setCloudStatus('sync');
-  try{
-    const token=await getToken();
-    sheetName=await getSheetName();
-    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A2:K`,{headers:{'Authorization':'Bearer '+token}});
-    const data=await res.json();
-    const rows=data.values||[];
-    exps=rows.map(r=>({
-      id:Number(r[0])||Date.now(),
-      date:r[1]||'',
-      catId:r[2]||cats[0]?.id||'c1',
-      payer:r[3]||'',
-      name:r[4]||'',
-      amount:Number(r[5])||0,
-      status:r[6]||'pending',
-      settledAt:r[7]||null,
-      memo:r[8]||'',
-      receipt:r[9]||null,
-      _row:Number(r[10])||0
-    })).filter(e=>e.name);
-    setCloudStatus('ok');
-    renderCurrentScreen();
-    return true;
-  }catch(e){setCloudStatus('err');console.error(e);return false;}
-  finally{isSyncing=false;}
-}
-
-// Sheetsに全データを書き込む
-async function saveToSheets(){
-  if(!sheetCfg.id||!sheetCfg.sj)return;
-  setCloudStatus('sync');
-  try{
-    const token=await getToken();
-    if(!sheetName||sheetName==='Sheet1')sheetName=await getSheetName();
-    // ヘッダー行
-    const header=[['id','日付','カテゴリID','支払い者','内容','金額','ステータス','精算日','メモ','領収書','行番号']];
-    // データ行（行番号は2から）
-    const rows=exps.map((e,i)=>[
-      e.id,e.date,e.catId,e.payer||'',e.name,e.amount,
-      e.status,e.settledAt||'',e.memo||'',e.receipt||'',i+2
-    ]);
-    const allRows=[...header,...rows];
-    // クリアしてから書き込む
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A1:K${allRows.length}?valueInputOption=RAW`,{
-      method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-      body:JSON.stringify({values:allRows})
-    });
-    // 余分な行を削除（データが減った場合）
-    if(rows.length<100){
-      const clearFrom=allRows.length+1;
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A${clearFrom}:K${clearFrom+50}:clear`,{
-        method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:'{}'
-      });
-    }
-    setCloudStatus('ok');
-  }catch(e){setCloudStatus('err');console.error('Save error:',e);}
-}
-
-// 自動ポーリング（30秒ごとに読み込み）
-function startPolling(){
-  if(syncTimer)clearInterval(syncTimer);
-  if(!sheetCfg.id||!sheetCfg.sj)return;
-  syncTimer=setInterval(()=>{loadFromSheets();},30000);
-}
-
-// ---- UI ----
 function showScreen(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -494,17 +387,6 @@ function showScreen(name){
   if(name==='add'){renderCatGrid();renderPayerGrid();pendRcpt=null;document.getElementById('rcpt-preview').innerHTML='';document.getElementById('upload-area').style.display='';}
   if(name==='history'){renderFilterSel();renderHistory();}
   if(name==='admin'){settleIds=new Set();renderAdmin();}
-  // 画面を開いたらSheets再読み込み
-  if(sheetCfg.id&&sheetCfg.sj)loadFromSheets();
-}
-
-function renderCurrentScreen(){
-  const active=document.querySelector('.screen.active');
-  if(!active)return;
-  const id=active.id.replace('screen-','');
-  if(id==='home')renderHome();
-  if(id==='history')renderHistory();
-  if(id==='admin')renderAdmin();
 }
 
 function handleAdmin(){if(adminOn){showScreen('admin');}else{pcIn='';updDots();document.getElementById('pc-error').textContent='';showScreen('passcode');}}
@@ -559,19 +441,16 @@ function handleRcpt(e){
 }
 function rmRcpt(){pendRcpt=null;document.getElementById('rcpt-preview').innerHTML='';document.getElementById('upload-area').style.display='';document.getElementById('rcpt-input').value='';}
 
-async function addExpense(){
+function addExpense(){
   const name=document.getElementById('exp-name').value.trim();
   const amount=parseFloat(document.getElementById('exp-amount').value);
   const date=document.getElementById('exp-date').value;
   const memo=document.getElementById('exp-memo').value.trim();
-  if(!name){setMsg('add-msg','内容を入力してください','r');return;}
-  if(!amount||amount<=0){setMsg('add-msg','金額を入力してください','r');return;}
-  if(!date){setMsg('add-msg','日付を選択してください','r');return;}
-  const newExp={id:Date.now(),date,catId:selCat,payer:selPayer,name,amount,status:'pending',settledAt:null,memo,receipt:pendRcpt||null};
-  exps.unshift(newExp);
-  setMsg('add-msg','保存中...','');
-  await saveToSheets();
-  setMsg('add-msg','✓ 追加しました！','g');
+  if(!name){msg('add-msg','内容を入力してください','r');return;}
+  if(!amount||amount<=0){msg('add-msg','金額を入力してください','r');return;}
+  if(!date){msg('add-msg','日付を選択してください','r');return;}
+  exps.unshift({id:Date.now(),catId:selCat,payer:selPayer,name,amount,date,memo,status:'pending',receipt:pendRcpt||null,settledAt:null});
+  save();msg('add-msg','✓ 追加しました！','g');
   document.getElementById('exp-name').value='';document.getElementById('exp-amount').value='';document.getElementById('exp-memo').value='';
   rmRcpt();
 }
@@ -613,10 +492,9 @@ function renderHistory(){
 
 function viewRcpt(id){const e=exps.find(x=>x.id===id);if(!e||!e.receipt)return;document.getElementById('rcpt-img').src=e.receipt;document.getElementById('rcpt-modal').classList.add('open');}
 function closeRcptModal(){document.getElementById('rcpt-modal').classList.remove('open');}
-
-async function approveExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='approved';await saveToSheets();renderAdmin();}}
-async function rejectExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='rejected';await saveToSheets();renderAdmin();}}
-async function delExp(id){if(confirm('この経費を削除しますか？')){exps=exps.filter(x=>x.id!==id);await saveToSheets();renderAdmin();}}
+function approveExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='approved';save();renderAdmin();}}
+function rejectExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='rejected';save();renderAdmin();}}
+function delExp(id){if(confirm('この経費を削除しますか？')){exps=exps.filter(x=>x.id!==id);save();renderAdmin();}}
 
 function togSettle(id){
   if(settleIds.has(id))settleIds.delete(id);else settleIds.add(id);
@@ -632,13 +510,10 @@ function updSettleAct(){
   const sc=document.getElementById('settle-count');if(sc)sc.textContent=settleIds.size;
   const st=document.getElementById('settle-total');if(st)st.textContent=fmt(tot);
 }
-async function bulkSettle(){
+function bulkSettle(){
   const today=new Date().toISOString().split('T')[0];let cnt=0;
   exps.forEach(e=>{if(settleIds.has(e.id)&&e.status==='approved'){e.status='settled';e.settledAt=today;cnt++;}});
-  settleIds=new Set();
-  await saveToSheets();
-  setMsg('sync-msg',cnt+'件を精算済みにしました','p');
-  renderAdmin();
+  settleIds=new Set();save();msg('sync-msg',cnt+'件を精算済みにしました','p');renderAdmin();
 }
 
 function renderHome(){
@@ -697,10 +572,10 @@ function renderAdmin(){
   const sOk=sheetCfg.id&&sheetCfg.sj;
   document.getElementById('sheet-id').value=sheetCfg.id||'';
   document.getElementById('sa-json').value=sheetCfg.sj||'';
-  document.getElementById('sheets-status').innerHTML=sOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> 設定済み・自動同期中</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
+  document.getElementById('sheets-status').innerHTML=sOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> 設定済み</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
   const pt={};exps.forEach(e=>{pt[e.payer]=(pt[e.payer]||0)+e.amount;});
   const mp=Math.max(...Object.values(pt),1);
-  document.getElementById('payer-chart').innerHTML=Object.keys(pt).length?Object.entries(pt).sort((a,b)=>b[1]-a[1]).map(([p,amt])=>{
+  document.getElementById('payer-chart').innerHTML=Object.keys(pt).length?Object.entries(pt).sort((a,b)=>b[1]-a[1]).map(([p,amt],i)=>{
     const bar=BARS[mbrs.indexOf(p)%BARS.length];
     return `<div class="chart-row"><span class="chart-lbl">${p}</span><div class="chart-bg"><div class="chart-fill" style="width:${Math.round(amt/mp*100)}%;background:${bar};"></div></div><span class="chart-amt">${fmt(amt)}</span></div>`;
   }).join(''):'<div style="color:var(--text2);font-size:13px;text-align:center;padding:12px;">データなし</div>';
@@ -737,64 +612,74 @@ function updPrev(){
 document.getElementById('cat-name').addEventListener('input',updPrev);
 function saveCat(){
   const name=document.getElementById('cat-name').value.trim();
-  if(!name){setMsg('cat-msg','カテゴリ名を入力してください','r');return;}
+  if(!name){msg('cat-msg','カテゴリ名を入力してください','r');return;}
   if(editCatId){const cat=cats.find(c=>c.id===editCatId);if(cat){cat.name=name;cat.icon=picIcon;cat.ci=picCI;}}
-  else{if(cats.find(c=>c.name===name)){setMsg('cat-msg','同じ名前があります','r');return;}cats.push({id:'c'+Date.now(),name,icon:picIcon,ci:picCI});}
-  saveCfg();closeCatModal();renderAdmin();
+  else{if(cats.find(c=>c.name===name)){msg('cat-msg','同じ名前があります','r');return;}cats.push({id:'c'+Date.now(),name,icon:picIcon,ci:picCI});}
+  save();closeCatModal();renderAdmin();
 }
 function delCat(id){
   if(exps.find(e=>e.catId===id)){alert('このカテゴリは使用中のため削除できません');return;}
-  if(confirm('削除しますか？')){cats=cats.filter(c=>c.id!==id);saveCfg();renderAdmin();}
+  if(confirm('削除しますか？')){cats=cats.filter(c=>c.id!==id);save();renderAdmin();}
 }
 
-async function saveSheetCfg(){
+function saveSheetCfg(){
   const id=document.getElementById('sheet-id').value.trim();const sj=document.getElementById('sa-json').value.trim();
-  if(!id||!sj){setMsg('sync-msg','IDとJSONを入力してください','r');return;}
-  try{JSON.parse(sj);}catch(e){setMsg('sync-msg','JSONの形式が正しくありません','r');return;}
-  sheetCfg={id,sj};
-  cachedToken=null;tokenExpiry=0;
-  localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj}));
-  setMsg('sync-msg','設定を保存しました。読み込み中...','');
-  const ok=await loadFromSheets();
-  if(ok){setMsg('sync-msg','✓ 接続成功・データを読み込みました','g');startPolling();}
-  else{setMsg('sync-msg','接続エラー。設定を確認してください','r');}
-  renderAdmin();
+  if(!id||!sj){msg('sync-msg','IDとJSONを入力してください','r');return;}
+  try{JSON.parse(sj);}catch(e){msg('sync-msg','JSONの形式が正しくありません','r');return;}
+  sheetCfg={id,sj};localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj}));
+  msg('sync-msg','✓ 設定を保存しました','g');setTimeout(()=>renderAdmin(),1600);
 }
-
-async function manualSync(){
-  setMsg('sync-msg','読み込み中...','');
-  const ok=await loadFromSheets();
-  setMsg('sync-msg',ok?'✓ 最新データを読み込みました':'読み込みエラー',ok?'g':'r');
+async function syncSheets(){
+  const el=document.getElementById('sync-msg');
+  if(!sheetCfg.id||!sheetCfg.sj){msg('sync-msg','先に設定を保存してください','r');return;}
+  el.textContent='同期中...';el.style.color='var(--text2)';
+  try{
+    const sa=JSON.parse(sheetCfg.sj);const token=await getToken(sa);
+    const rows=[['日付','カテゴリ','支払い者','内容','金額','ステータス','精算日','メモ','領収書'],
+      ...exps.map(e=>{const cat=gc(e.catId);return[e.date,cat.name,e.payer||'',e.name,e.amount,stLbl(e.status),e.settledAt||'',e.memo||'',e.receipt?'あり':'なし'];})];
+    // シート名を取得してから書き込む
+    const metaRes=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties.title`,{headers:{'Authorization':'Bearer '+token}});
+    const meta=await metaRes.json();
+    const sheetName=meta.sheets?.[0]?.properties?.title||'Sheet1';
+    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A1:I${rows.length}?valueInputOption=RAW`,
+      {method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({values:rows})});
+    if(res.ok){msg('sync-msg','✓ '+(rows.length-1)+'件を同期しました','g');}
+    else{const err=await res.json();msg('sync-msg','エラー: '+(err.error?.message||res.status),'r');}
+  }catch(e){msg('sync-msg','エラー: '+e.message,'r');}
 }
-
+async function getToken(sa){
+  const now=Math.floor(Date.now()/1000);
+  const b64u=s=>btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const unsigned=b64u({alg:'RS256',typ:'JWT'})+'.'+b64u({iss:sa.client_email,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
+  const b64=sa.private_key.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
+  const buf=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const key=await crypto.subtle.importKey('pkcs8',buf,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
+  const sig=await crypto.subtle.sign({name:'RSASSA-PKCS1-v1_5'},key,new TextEncoder().encode(unsigned));
+  const jwt=unsigned+'.'+btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion='+jwt});
+  const data=await res.json();if(!data.access_token)throw new Error(data.error_description||'Token取得失敗');
+  return data.access_token;
+}
 function changePC(){
   const p1=document.getElementById('new-pc').value;const p2=document.getElementById('new-pc2').value;
-  if(!/^\d{4}$/.test(p1)){setMsg('pc-msg','4桁の数字を入力してください','r');return;}
-  if(p1!==p2){setMsg('pc-msg','パスコードが一致しません','r');return;}
-  localStorage.setItem('admin_pc',p1);setMsg('pc-msg','✓ パスコードを変更しました','g');
+  if(!/^\d{4}$/.test(p1)){msg('pc-msg','4桁の数字を入力してください','r');return;}
+  if(p1!==p2){msg('pc-msg','パスコードが一致しません','r');return;}
+  localStorage.setItem('admin_pc',p1);msg('pc-msg','✓ パスコードを変更しました','g');
   document.getElementById('new-pc').value='';document.getElementById('new-pc2').value='';
 }
 function addMember(){
   const input=document.getElementById('new-member');const name=input.value.trim();
-  if(!name){setMsg('member-msg','名前を入力してください','r');return;}
-  if(mbrs.includes(name)){setMsg('member-msg','すでに追加されています','r');return;}
-  mbrs.push(name);saveCfg();input.value='';setMsg('member-msg','✓ 追加しました','g');renderAdmin();
+  if(!name){msg('member-msg','名前を入力してください','r');return;}
+  if(mbrs.includes(name)){msg('member-msg','すでに追加されています','r');return;}
+  mbrs.push(name);save();input.value='';msg('member-msg','✓ 追加しました','g');renderAdmin();
 }
-function delMember(i){mbrs.splice(i,1);saveCfg();renderAdmin();}
-async function clearAll(){if(confirm('全データを削除します。本当によろしいですか？')){exps=[];await saveToSheets();renderAdmin();}}
+function delMember(i){mbrs.splice(i,1);save();renderAdmin();}
+function clearAll(){if(confirm('全データを削除します。本当によろしいですか？')){exps=[];save();renderAdmin();}}
 
-// ---- Init ----
-loadCfg();
+load();
 document.getElementById('exp-date').value=new Date().toISOString().split('T')[0];
 document.getElementById('hdr-right').textContent=(new Date().getMonth()+1)+'月';
-setCloudStatus(sheetCfg.id&&sheetCfg.sj?'sync':'off');
-if(sheetCfg.id&&sheetCfg.sj){
-  loadFromSheets().then(()=>startPolling());
-}else{
-  renderHome();
-}
-// ページを表示したとき・フォーカスが戻ったときも再読み込み
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&sheetCfg.id&&sheetCfg.sj)loadFromSheets();});
+renderHome();
 </script>
 </body>
 </html>
