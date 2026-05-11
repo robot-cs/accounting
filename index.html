@@ -382,8 +382,11 @@ function loadCfg(){
   selCat=cats[0].id;selPayer=mbrs[0];
 }
 function saveCfg(){
+  // ローカルにも保存（オフライン時のフォールバック）
   localStorage.setItem('mbr_v8',JSON.stringify(mbrs));
   localStorage.setItem('cats_v8',JSON.stringify(cats));
+  // Sheetsにも保存
+  saveMasterToSheets();
 }
 function getPC(){return localStorage.getItem('admin_pc')||'1234';}
 function fmt(n){return '¥'+Math.round(n).toLocaleString('ja-JP');}
@@ -467,9 +470,24 @@ async function getToken(){
 
 async function getSheetName(){
   const token=await getToken();
-  const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties.title`,{headers:{'Authorization':'Bearer '+token}});
+  const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties`,{headers:{'Authorization':'Bearer '+token}});
   const data=await res.json();
-  return data.sheets?.[0]?.properties?.title||'Sheet1';
+  const sheets=data.sheets||[];
+  const titles=sheets.map(s=>s.properties.title);
+  const firstName=titles[0]||'Sheet1';
+
+  // メンバー・カテゴリシートがなければ自動作成
+  const needed=['メンバー','カテゴリ'].filter(t=>!titles.includes(t));
+  if(needed.length>0){
+    const requests=needed.map(title=>({addSheet:{properties:{title}}}));
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}:batchUpdate`,{
+      method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({requests})
+    });
+    // 初期データを書き込む
+    await saveMasterToSheets();
+  }
+  return firstName;
 }
 
 // Sheetsからデータを読み込む
@@ -480,9 +498,17 @@ async function loadFromSheets(){
   try{
     const token=await getToken();
     sheetName=await getSheetName();
-    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A2:K`,{headers:{'Authorization':'Bearer '+token}});
-    const data=await res.json();
-    const rows=data.values||[];
+
+    // 経費データ・マスターデータを並行取得
+    const [expRes,mbrRes,catRes]=await Promise.all([
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent(sheetName)}!A2:K`,{headers:{'Authorization':'Bearer '+token}}),
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/メンバー!A2:B`,{headers:{'Authorization':'Bearer '+token}}),
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/カテゴリ!A2:D`,{headers:{'Authorization':'Bearer '+token}})
+    ]);
+
+    // 経費データ
+    const expData=await expRes.json();
+    const rows=expData.values||[];
     exps=rows.map(r=>({
       id:Number(r[0])||Date.now(),
       date:r[1]||'',
@@ -496,11 +522,62 @@ async function loadFromSheets(){
       receipt:r[9]||null,
       _row:Number(r[10])||0
     })).filter(e=>e.name);
+
+    // メンバーデータ（シートが存在する場合のみ）
+    if(mbrRes.ok){
+      const mbrData=await mbrRes.json();
+      const mbrRows=mbrData.values||[];
+      if(mbrRows.length>0){
+        mbrs=mbrRows.map(r=>r[0]).filter(Boolean);
+        localStorage.setItem('mbr_v8',JSON.stringify(mbrs));
+      }
+    }
+
+    // カテゴリデータ（シートが存在する場合のみ）
+    if(catRes.ok){
+      const catData=await catRes.json();
+      const catRows=catData.values||[];
+      if(catRows.length>0){
+        cats=catRows.map(r=>({
+          id:r[0]||'c'+Date.now(),
+          name:r[1]||'',
+          icon:r[2]||'ti-dots',
+          ci:Number(r[3])||0
+        })).filter(c=>c.name);
+        localStorage.setItem('cats_v8',JSON.stringify(cats));
+      }
+    }
+
     setCloudStatus('ok');
     renderCurrentScreen();
     return true;
   }catch(e){setCloudStatus('err');console.error(e);return false;}
   finally{isSyncing=false;}
+}
+
+// メンバー・カテゴリをSheetsに保存
+async function saveMasterToSheets(){
+  if(!sheetCfg.id||!sheetCfg.sj)return;
+  try{
+    const token=await getToken();
+    if(!sheetName||sheetName==='Sheet1')sheetName=await getSheetName();
+
+    // メンバーシートに書き込み
+    const mbrRows=[['名前','備考'],...mbrs.map(m=>[m,''])];
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/メンバー!A1:B${mbrRows.length}?valueInputOption=RAW`,{
+      method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({values:mbrRows})
+    });
+
+    // カテゴリシートに書き込み
+    const catRows=[['ID','名前','アイコン','色インデックス'],...cats.map(c=>[c.id,c.name,c.icon,c.ci])];
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/カテゴリ!A1:D${catRows.length}?valueInputOption=RAW`,{
+      method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({values:catRows})
+    });
+
+    console.log('マスターデータをSheetsに保存しました');
+  }catch(e){console.error('Master save error:',e);}
 }
 
 // Sheetsに全データを書き込む
@@ -898,8 +975,12 @@ async function saveSheetCfg(){
   localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj,driveFolderId}));
   setMsg('sync-msg','設定を保存しました。読み込み中...','');
   const ok=await loadFromSheets();
-  if(ok){setMsg('sync-msg','✓ 接続成功・データを読み込みました','g');startPolling();}
-  else{setMsg('sync-msg','接続エラー。設定を確認してください','r');}
+  if(ok){
+    setMsg('sync-msg','✓ 接続成功・データを読み込みました','g');
+    // 初回接続時にローカルのマスターデータをSheetsに送信
+    await saveMasterToSheets();
+    startPolling();
+  }else{setMsg('sync-msg','接続エラー。設定を確認してください','r');}
   renderAdmin();
 }
 
