@@ -184,7 +184,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
             <i class="ti ti-camera-up"></i>
             <div style="font-size:13px;color:var(--text2);">タップして写真を選択<br><span style="font-size:11px;">カメラ・フォトライブラリ</span></div>
           </div>
-          <input type="file" id="rcpt-input" accept="image/*" capture="environment" style="display:none;" onchange="handleRcpt(event)">
+          <input type="file" id="rcpt-input" accept="image/*" style="display:none;" onchange="handleRcpt(event)">
           <div id="rcpt-preview"></div>
         </div>
       </div>
@@ -260,8 +260,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
           <div class="warn-box"><i class="ti ti-alert-triangle"></i> このキーは厳重に管理してください。</div>
           <textarea class="ta-input" id="sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
         </div>
-        <div class="frow"><label class="flbl">Cloudinary Cloud Name（領収書保存先）</label><input class="finput" id="cloudinary-name" type="text" placeholder="例: mycompany"></div>
-        <div class="frow"><label class="flbl">Cloudinary Upload Preset（Unsignedのもの）</label><input class="finput" id="cloudinary-preset" type="text" placeholder="例: expense_preset"></div>
+        <div class="frow"><label class="flbl">Gemini API Key（領収書AI照合・無料）</label><input class="finput" id="gemini-api-key" type="password" placeholder="AIza..."></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-blue" style="flex:1;" onclick="saveSheetCfg()">設定を保存</button>
           <button class="btn btn-sec" style="flex:1;" onclick="manualSync()"><i class="ti ti-refresh"></i> 今すぐ読み込む</button>
@@ -360,7 +359,7 @@ const DEF_CATS=[
 
 // ---- State ----
 let exps=[],mbrs=[],cats=[],selCat='',selPayer='',adminOn=false,pcIn='';
-let sheetCfg={id:'',sj:''},cloudinaryCfg={cloudName:'',uploadPreset:''},pendRcpt=null,editCatId=null,picIcon=ICONS[0],picCI=0;
+let sheetCfg={id:'',sj:''},geminiApiKey='',pendRcpt=null,editCatId=null,picIcon=ICONS[0],picCI=0;
 let hisFilter='all',settleIds=new Set();
 let cachedToken=null,tokenExpiry=0,sheetName='Sheet1'; // スコープ変更時はキャッシュ無効化
 let syncTimer=null,isSyncing=false;
@@ -374,7 +373,7 @@ function loadCfg(){
     cats=JSON.parse(localStorage.getItem('cats_v8')||'null')||JSON.parse(JSON.stringify(DEF_CATS));
     const sc=JSON.parse(localStorage.getItem('sheet_cfg')||'{}');
     sheetCfg={id:sc.id||'',sj:sc.saJson||''};
-    cloudinaryCfg={cloudName:sc.cloudName||'',uploadPreset:sc.uploadPreset||''};
+    geminiApiKey=sc.geminiApiKey||'';
     const ec=JSON.parse(localStorage.getItem('email_cfg')||'{}');
     emailCfg={notifyEmail:ec.notifyEmail||'',pubKey:ec.pubKey||'',svcId:ec.svcId||'',tmplId:ec.tmplId||''};
     if(emailCfg.pubKey){
@@ -412,39 +411,91 @@ function setCloudStatus(state){
 
 // ---- Google Sheets API ----
 // Google Driveに画像をアップロードしてURLを返す
-async function uploadToDrive(base64Data, filename){
-  console.log('[Cloudinary] アップロード開始 cloudName:', cloudinaryCfg.cloudName);
-  if(!cloudinaryCfg.cloudName||!cloudinaryCfg.uploadPreset||!base64Data){
-    console.warn('[Cloudinary] 設定不足 cloudName:', cloudinaryCfg.cloudName, 'preset:', cloudinaryCfg.uploadPreset);
-    return null;
-  }
+// 領収書をSheetsの「領収書」シートに保存し、Claude AIで金額・日付を照合
+async function saveReceiptToSheets(expId, base64Data, expAmount, expDate){
+  if(!sheetCfg.id||!sheetCfg.sj||!base64Data)return {saved:false, verify:null};
   try{
-    const mimeType=base64Data.split(';')[0].split(':')[1]||'image/jpeg';
-    const byteStr=atob(base64Data.split(',')[1]);
-    const ia=new Uint8Array(byteStr.length);
-    for(let i=0;i<byteStr.length;i++)ia[i]=byteStr.charCodeAt(i);
-    const blob=new Blob([ia],{type:mimeType});
-    const formData=new FormData();
-    formData.append('file', blob, filename);
-    formData.append('upload_preset', cloudinaryCfg.uploadPreset);
-    formData.append('folder', 'receipts');
-    const res=await fetch(
-      'https://api.cloudinary.com/v1_1/'+cloudinaryCfg.cloudName+'/image/upload',
-      {method:'POST', body:formData}
-    );
-    const data=await res.json();
-    console.log('[Cloudinary] レスポンス:', JSON.stringify(data).slice(0,200));
-    if(data.secure_url){
-      console.log('[Cloudinary] ✓ 成功:', data.secure_url);
-      return data.secure_url;
+    const token=await getToken();
+    // 「領収書」シートが存在するか確認・なければ自動作成
+    const metaRes=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}?fields=sheets.properties`,{headers:{'Authorization':'Bearer '+token}});
+    const meta=await metaRes.json();
+    const titles=(meta.sheets||[]).map(s=>s.properties.title);
+    if(!titles.includes('領収書')){
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}:batchUpdate`,{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+        body:JSON.stringify({requests:[{addSheet:{properties:{title:'領収書'}}}]})
+      });
+      // ヘッダー行
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent('領収書')}!A1:G1?valueInputOption=RAW`,{
+        method:'PUT',
+        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+        body:JSON.stringify({values:[['経費ID','保存日時','入力金額','入力日付','読取金額','読取日付','照合結果']]})
+      });
     }
-    console.error('[Cloudinary] 失敗:', data.error||data);
-    return null;
+
+    // Claude APIで領収書の金額・日付を読み取り
+    let readAmount='',readDate='',verifyResult='未照合';
+    if(geminiApiKey){
+      try{
+        const base64Only=base64Data.split(',')[1];
+        const aiRes=await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+geminiApiKey,
+          {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              contents:[{parts:[
+                {inline_data:{mime_type:'image/jpeg',data:base64Only}},
+                {text:'この領収書画像から「合計金額」と「日付」を読み取ってください。必ずJSON形式のみで返してください。例：{"amount":1500,"date":"2024-05-11"} 金額が読み取れない場合はnull、日付が読み取れない場合はnullにしてください。JSONのみ返し、説明文は不要です。'}
+              ]}]
+            })
+          }
+        );
+        const aiData=await aiRes.json();
+        console.log('[Gemini] レスポンス:', JSON.stringify(aiData).slice(0,300));
+        const text=(aiData.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
+        console.log('[Gemini] テキスト:', text);
+        const jsonMatch=text.match(/\{[\s\S]*?\}/);
+        if(jsonMatch){
+          const parsed=JSON.parse(jsonMatch[0]);
+          readAmount=parsed.amount!=null?String(parsed.amount):'';
+          readDate=parsed.date||'';
+          const amountMatch=readAmount&&Math.abs(Number(readAmount)-Number(expAmount))<=1;
+          const dateMatch=readDate&&readDate.replace(/\//g,'-')===expDate;
+          if(amountMatch&&dateMatch) verifyResult='✓ 一致';
+          else if(!readAmount&&!readDate) verifyResult='読取不可';
+          else{
+            const issues=[];
+            if(!amountMatch&&readAmount) issues.push('金額不一致(読取:'+readAmount+'/入力:'+expAmount+')');
+            if(!dateMatch&&readDate) issues.push('日付不一致(読取:'+readDate+'/入力:'+expDate+')');
+            verifyResult='⚠ '+issues.join(' / ');
+          }
+        }else{
+          verifyResult='読取不可';
+        }
+      }catch(aiErr){
+        console.error('[Gemini] 照合エラー:', aiErr);
+        verifyResult='照合エラー';
+      }
+    }
+
+    // Sheetsの「領収書」シートに照合結果のみ追記（画像データは保存しない）
+    const now=new Date().toISOString().replace('T',' ').slice(0,19);
+    const appendRes=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent('領収書')}!A:G:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({values:[[String(expId),now,String(expAmount),expDate,readAmount,readDate,verifyResult]]})
+    });
+    const ok=appendRes.ok;
+    console.log('[Receipt] Sheets保存:', ok, 'ID:', expId, '照合:', verifyResult);
+    return {saved:ok, verify:verifyResult, readAmount, readDate};
   }catch(e){
-    console.error('[Cloudinary] 例外:', e);
-    return null;
+    console.error('[Receipt] 保存例外:', e);
+    return {saved:false, verify:null};
   }
 }
+
 
 async function getToken(){
   if(cachedToken&&Date.now()<tokenExpiry)return cachedToken;
@@ -505,19 +556,23 @@ async function loadFromSheets(){
     // 経費データ
     const expData=await expRes.json();
     const rows=expData.values||[];
-    exps=rows.map(r=>({
-      id:Number(r[0])||Date.now(),
-      date:r[1]||'',
-      catId:r[2]||cats[0]?.id||'c1',
-      payer:r[3]||'',
-      name:r[4]||'',
-      amount:Number(r[5])||0,
-      status:r[6]||'pending',
-      settledAt:r[7]||null,
-      memo:r[8]||'',
-      receipt:r[9]||null,
-      _row:Number(r[10])||0
-    })).filter(e=>e.name);
+    exps=rows.map(r=>{
+      const receipt=(r[9]||'').trim();
+      return {
+        id:Number(r[0])||Date.now(),
+        date:r[1]||'',
+        catId:r[2]||cats[0]?.id||'c1',
+        payer:r[3]||'',
+        name:r[4]||'',
+        amount:Number(r[5])||0,
+        status:r[6]||'pending',
+        settledAt:r[7]||null,
+        memo:r[8]||'',
+        receipt:receipt.startsWith('http')?receipt:null,
+        _row:Number(r[10])||0
+      };
+    }).filter(e=>e.name);
+    console.log('[Sheets] 領収書あり:', exps.filter(e=>e.receipt).length, '件');
 
     // メンバーデータ（シートが存在する場合のみ）
     if(mbrRes.ok){
@@ -734,31 +789,27 @@ async function addExpense(){
   if(!amount||amount<=0){setMsg('add-msg','金額を入力してください','r');return;}
   if(!date){setMsg('add-msg','日付を選択してください','r');return;}
   setMsg('add-msg','保存中...','');
-  // 領収書をDriveにアップロード
-  let receiptUrl=null;
+  // 領収書をSheetsの「領収書」シートに保存し、AIで照合
+  const expId=Date.now();
+  let receiptFlag=null;
+  let verifyMsg='';
   if(pendRcpt){
-    if(!sheetCfg.driveFolderId){
-      setMsg('add-msg','Drive フォルダIDが未設定のため領収書はスキップされます','r');
-      await new Promise(r=>setTimeout(r,1500));
+    setMsg('add-msg',geminiApiKey?'領収書をAI照合中(Gemini)...':'領収書を保存中...','');
+    const result=await saveReceiptToSheets(expId, pendRcpt, amount, date);
+    if(result.saved){
+      receiptFlag='有（ID:'+expId+'）';
+      if(result.verify) verifyMsg=' [照合:'+result.verify+']';
+      console.log('[Receipt] 保存成功 照合:', result.verify);
     } else {
-      setMsg('add-msg','領収書をアップロード中...','');
-      const uploaded=await uploadToDrive(pendRcpt,'receipt_'+Date.now()+'.jpg');
-      // DriveのURLの場合のみ保存（Base64はSheetsに入れない）
-      if(uploaded && uploaded.startsWith('https://drive.google.com/')){
-        receiptUrl=uploaded;
-        setMsg('add-msg','領収書アップロード完了、保存中...','');
-      } else {
-        setMsg('add-msg','領収書アップロード失敗（経費は保存します）','r');
-        await new Promise(r=>setTimeout(r,1500));
-      }
+      console.warn('[Receipt] 保存失敗、経費は保存継続');
     }
   }
-  const newExp={id:Date.now(),date,catId:selCat,payer:selPayer,name,amount,status:'pending',settledAt:null,memo,receipt:receiptUrl};
+  const newExp={id:expId,date,catId:selCat,payer:selPayer,name,amount,status:'pending',settledAt:null,memo,receipt:receiptFlag};
   exps.unshift(newExp);
   await saveToSheets();
   // メール通知
   sendNotifyEmail(newExp);
-  setMsg('add-msg','✓ 追加しました！','g');
+  setMsg('add-msg','✓ 追加しました！'+verifyMsg,'g');
   document.getElementById('exp-name').value='';document.getElementById('exp-amount').value='';document.getElementById('exp-memo').value='';
   rmRcpt();
 }
@@ -783,7 +834,8 @@ function sendNotifyEmail(exp){
 
 function expCard(e,isAdmin){
   const cat=gc(e.catId);const col=gcol(cat);
-  const rcptBtn=e.receipt?`<span class="rcpt-chip" onclick="viewRcpt(${e.id})"><i class="ti ti-receipt" style="font-size:10px;"></i>領収書</span>`:'';
+  const hasReceipt=!!(e.receipt);
+  const rcptBtn=hasReceipt?`<span class="rcpt-chip" onclick="viewRcpt(${e.id})"><i class="ti ti-receipt" style="font-size:10px;"></i>領収書</span>`:'';
   const adminBtns=isAdmin?`<div class="act-btns">
     ${e.status==='pending'?`<button class="ic-btn" onclick="approveExp(${e.id})" style="color:var(--green);"><i class="ti ti-check"></i></button><button class="ic-btn" onclick="rejectExp(${e.id})" style="color:var(--red);"><i class="ti ti-x"></i></button>`:''}
     <button class="ic-btn" onclick="delExp(${e.id})"><i class="ti ti-trash"></i></button>
@@ -816,8 +868,62 @@ function renderHistory(){
   document.getElementById('history-list').innerHTML=list.length?list.map(e=>expCard(e,false)).join(''):'<div class="empty"><i class="ti ti-receipt"></i>経費がありません</div>';
 }
 
-function viewRcpt(id){const e=exps.find(x=>x.id===id);if(!e||!e.receipt)return;document.getElementById('rcpt-img').src=e.receipt;document.getElementById('rcpt-modal').classList.add('open');}
-function closeRcptModal(){document.getElementById('rcpt-modal').classList.remove('open');}
+async function viewRcpt(id){
+  const e=exps.find(x=>x.id===id);
+  if(!e||!e.receipt)return;
+  if(e.receipt.startsWith('http')){
+    document.getElementById('rcpt-img').src=e.receipt;
+    document.getElementById('rcpt-modal').classList.add('open');
+    return;
+  }
+  // Sheetsの「領収書」シートからBase64を取得
+  try{
+    document.getElementById('rcpt-img').src='';
+    document.getElementById('rcpt-modal').classList.add('open');
+    document.getElementById('rcpt-img').alt='読み込み中...';
+    const token=await getToken();
+    const res=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetCfg.id}/values/${encodeURIComponent('領収書')}!A:G`,{headers:{'Authorization':'Bearer '+token}});
+    const data=await res.json();
+    const rows=data.values||[];
+    const row=rows.find(r=>String(r[0])===String(id));
+    if(row){
+      // 画像データはない（IDと照合結果のみ保存）→照合情報を表示
+      document.getElementById('rcpt-img').alt='領収書画像';
+      // 照合結果をモーダルに表示
+      // モーダル内に照合情報を表示
+      const imgEl=document.getElementById('rcpt-img');
+      imgEl.style.display='none';
+      // モーダルボックス内に照合情報カードを追加
+      const existing=document.getElementById('verify-info-card');
+      if(existing)existing.remove();
+      const card=document.createElement('div');
+      card.id='verify-info-card';
+      card.style.cssText='background:var(--surface2);border-radius:var(--r-sm);padding:14px;font-size:13px;line-height:1.8;';
+      const vr=row[6]||'未照合';
+      const color=vr.includes('✓')?'var(--green)':vr.includes('⚠')?'#ff9500':'var(--text2)';
+      card.innerHTML=`<div style="font-weight:600;color:${color};margin-bottom:8px;">${vr}</div>
+        <div>📅 入力日付: <strong>${row[3]||'-'}</strong></div>
+        <div>📅 読取日付: <strong>${row[5]||'-'}</strong></div>
+        <div>💴 入力金額: <strong>¥${Number(row[2]||0).toLocaleString()}</strong></div>
+        <div>💴 読取金額: <strong>${row[4]?'¥'+Number(row[4]).toLocaleString():'-'}</strong></div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text2);">保存日時: ${row[1]||'-'}</div>`;
+      imgEl.parentNode.insertBefore(card, imgEl);
+    } else {
+      alert('領収書データが見つかりません（ID:'+id+'）');
+      document.getElementById('rcpt-modal').classList.remove('open');
+    }
+  }catch(ex){
+    console.error('[Receipt] 取得エラー:', ex);
+    document.getElementById('rcpt-modal').classList.remove('open');
+  }
+}
+function closeRcptModal(){
+  document.getElementById('rcpt-modal').classList.remove('open');
+  const card=document.getElementById('verify-info-card');
+  if(card)card.remove();
+  const imgEl=document.getElementById('rcpt-img');
+  if(imgEl){imgEl.style.display='';imgEl.src='';}
+}
 
 async function approveExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='approved';await saveToSheets();renderAdmin();}}
 async function rejectExp(id){const e=exps.find(x=>x.id===id);if(e){e.status='rejected';await saveToSheets();renderAdmin();}}
@@ -906,11 +1012,9 @@ function renderAdmin(){
     document.getElementById('sheet-id').value=sheetCfg.id||'';
     document.getElementById('sa-json').value=sheetCfg.sj||'';
     const scFresh2=JSON.parse(localStorage.getItem('sheet_cfg')||'{}');
-  if(!cloudinaryCfg.cloudName)cloudinaryCfg={cloudName:scFresh2.cloudName||'',uploadPreset:scFresh2.uploadPreset||''};
-  const cnEl=document.getElementById('cloudinary-name');
-  const cpEl=document.getElementById('cloudinary-preset');
-  if(cnEl&&document.activeElement!==cnEl)cnEl.value=cloudinaryCfg.cloudName||'';
-  if(cpEl&&document.activeElement!==cpEl)cpEl.value=cloudinaryCfg.uploadPreset||'';
+  if(!geminiApiKey)geminiApiKey=scFresh2.geminiApiKey||'';
+  const akEl=document.getElementById('gemini-api-key');
+  if(akEl&&document.activeElement!==akEl)akEl.value=geminiApiKey?'AIza***（設定済み）':'';
   }
   document.getElementById('sheets-status').innerHTML=sOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> 設定済み・自動同期中</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
   // localStorageから最新のEmailJS設定を毎回読み直す
@@ -989,14 +1093,12 @@ function delCat(id){
 
 async function saveSheetCfg(){
   const id=document.getElementById('sheet-id').value.trim();const sj=document.getElementById('sa-json').value.trim();
-  const cloudName=document.getElementById('cloudinary-name').value.trim();
-  const uploadPreset=document.getElementById('cloudinary-preset').value.trim();
-  cloudinaryCfg={cloudName,uploadPreset};
+  geminiApiKey=document.getElementById('gemini-api-key').value.trim();
   if(!id||!sj){setMsg('sync-msg','IDとJSONを入力してください','r');return;}
   try{JSON.parse(sj);}catch(e){setMsg('sync-msg','JSONの形式が正しくありません','r');return;}
   sheetCfg={id,sj};
   cachedToken=null;tokenExpiry=0;
-  localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj,cloudName:cloudinaryCfg.cloudName,uploadPreset:cloudinaryCfg.uploadPreset}));
+  localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj,geminiApiKey}));
   setMsg('sync-msg','設定を保存しました。読み込み中...','');
   const ok=await loadFromSheets();
   if(ok){
