@@ -260,7 +260,8 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,'Helvetica Neue'
           <div class="warn-box"><i class="ti ti-alert-triangle"></i> このキーは厳重に管理してください。</div>
           <textarea class="ta-input" id="sa-json" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'></textarea>
         </div>
-        <div class="frow"><label class="flbl">Google Drive フォルダID（領収書保存先）</label><input class="finput" id="drive-folder-id" type="text" placeholder="DriveフォルダのIDを貼り付け"></div>
+        <div class="frow"><label class="flbl">Cloudinary Cloud Name（領収書保存先）</label><input class="finput" id="cloudinary-name" type="text" placeholder="例: mycompany"></div>
+        <div class="frow"><label class="flbl">Cloudinary Upload Preset（Unsignedのもの）</label><input class="finput" id="cloudinary-preset" type="text" placeholder="例: expense_preset"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-blue" style="flex:1;" onclick="saveSheetCfg()">設定を保存</button>
           <button class="btn btn-sec" style="flex:1;" onclick="manualSync()"><i class="ti ti-refresh"></i> 今すぐ読み込む</button>
@@ -359,9 +360,9 @@ const DEF_CATS=[
 
 // ---- State ----
 let exps=[],mbrs=[],cats=[],selCat='',selPayer='',adminOn=false,pcIn='';
-let sheetCfg={id:'',sj:''},pendRcpt=null,editCatId=null,picIcon=ICONS[0],picCI=0;
+let sheetCfg={id:'',sj:''},cloudinaryCfg={cloudName:'',uploadPreset:''},pendRcpt=null,editCatId=null,picIcon=ICONS[0],picCI=0;
 let hisFilter='all',settleIds=new Set();
-let cachedToken=null,tokenExpiry=0,sheetName='Sheet1';
+let cachedToken=null,tokenExpiry=0,sheetName='Sheet1'; // スコープ変更時はキャッシュ無効化
 let syncTimer=null,isSyncing=false;
 
 // ---- Persist local config (not expense data) ----
@@ -372,10 +373,14 @@ function loadCfg(){
     mbrs=JSON.parse(localStorage.getItem('mbr_v8')||'["山田太郎","佐藤花子"]');
     cats=JSON.parse(localStorage.getItem('cats_v8')||'null')||JSON.parse(JSON.stringify(DEF_CATS));
     const sc=JSON.parse(localStorage.getItem('sheet_cfg')||'{}');
-    sheetCfg={id:sc.id||'',sj:sc.saJson||'',driveFolderId:sc.driveFolderId||''};
+    sheetCfg={id:sc.id||'',sj:sc.saJson||''};
+    cloudinaryCfg={cloudName:sc.cloudName||'',uploadPreset:sc.uploadPreset||''};
     const ec=JSON.parse(localStorage.getItem('email_cfg')||'{}');
     emailCfg={notifyEmail:ec.notifyEmail||'',pubKey:ec.pubKey||'',svcId:ec.svcId||'',tmplId:ec.tmplId||''};
-    if(emailCfg.pubKey)emailjs.init(emailCfg.pubKey);
+    if(emailCfg.pubKey){
+      emailjs.init(emailCfg.pubKey);
+      console.log('EmailJS初期化済み:', emailCfg.svcId, emailCfg.tmplId);
+    }
   }catch(e){mbrs=['山田太郎','佐藤花子'];cats=JSON.parse(JSON.stringify(DEF_CATS));sheetCfg={id:'',sj:'',driveFolderId:''};emailCfg={notifyEmail:'',pubKey:'',svcId:'',tmplId:''};}
   if(!mbrs.length)mbrs=['山田太郎','佐藤花子'];
   if(!cats.length)cats=JSON.parse(JSON.stringify(DEF_CATS));
@@ -408,46 +413,37 @@ function setCloudStatus(state){
 // ---- Google Sheets API ----
 // Google Driveに画像をアップロードしてURLを返す
 async function uploadToDrive(base64Data, filename){
-  if(!sheetCfg.driveFolderId||!base64Data)return base64Data; // フォルダ未設定なら圧縮Base64をそのまま使う
+  console.log('[Cloudinary] アップロード開始 cloudName:', cloudinaryCfg.cloudName);
+  if(!cloudinaryCfg.cloudName||!cloudinaryCfg.uploadPreset||!base64Data){
+    console.warn('[Cloudinary] 設定不足 cloudName:', cloudinaryCfg.cloudName, 'preset:', cloudinaryCfg.uploadPreset);
+    return null;
+  }
   try{
-    const token=await getToken();
-    // Base64をBlobに変換
-    const byteStr=atob(base64Data.split(',')[1]);
     const mimeType=base64Data.split(';')[0].split(':')[1]||'image/jpeg';
-    const ab=new ArrayBuffer(byteStr.length);
-    const ia=new Uint8Array(ab);
+    const byteStr=atob(base64Data.split(',')[1]);
+    const ia=new Uint8Array(byteStr.length);
     for(let i=0;i<byteStr.length;i++)ia[i]=byteStr.charCodeAt(i);
-    const blob=new Blob([ab],{type:mimeType});
-    // multipart uploadでDriveにアップロード
-    const meta=JSON.stringify({name:filename,parents:[sheetCfg.driveFolderId]});
-    const boundary='----FormBoundary'+Date.now();
-    const body=[
-      '--'+boundary,'Content-Type: application/json; charset=UTF-8','',meta,'',
-      '--'+boundary,'Content-Type: '+mimeType,'',''
-    ].join('\r\n');
-    const bodyEnd='\r\n--'+boundary+'--';
-    const encoder=new TextEncoder();
-    const bodyBytes=encoder.encode(body);
-    const fileBytes=new Uint8Array(ab);
-    const endBytes=encoder.encode(bodyEnd);
-    const combined=new Uint8Array(bodyBytes.length+fileBytes.length+endBytes.length);
-    combined.set(bodyBytes,0);combined.set(fileBytes,bodyBytes.length);combined.set(endBytes,bodyBytes.length+fileBytes.length);
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+token,'Content-Type':'multipart/related; boundary='+boundary},
-      body:combined
-    });
+    const blob=new Blob([ia],{type:mimeType});
+    const formData=new FormData();
+    formData.append('file', blob, filename);
+    formData.append('upload_preset', cloudinaryCfg.uploadPreset);
+    formData.append('folder', 'receipts');
+    const res=await fetch(
+      'https://api.cloudinary.com/v1_1/'+cloudinaryCfg.cloudName+'/image/upload',
+      {method:'POST', body:formData}
+    );
     const data=await res.json();
-    if(data.id){
-      // 共有設定をanyoneWithLinkに変更
-      await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`,{
-        method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({role:'reader',type:'anyone'})
-      });
-      return `https://drive.google.com/uc?id=${data.id}`;
+    console.log('[Cloudinary] レスポンス:', JSON.stringify(data).slice(0,200));
+    if(data.secure_url){
+      console.log('[Cloudinary] ✓ 成功:', data.secure_url);
+      return data.secure_url;
     }
-    return base64Data;
-  }catch(e){console.error('Drive upload error:',e);return base64Data;}
+    console.error('[Cloudinary] 失敗:', data.error||data);
+    return null;
+  }catch(e){
+    console.error('[Cloudinary] 例外:', e);
+    return null;
+  }
 }
 
 async function getToken(){
@@ -455,7 +451,7 @@ async function getToken(){
   const sa=JSON.parse(sheetCfg.sj);
   const now=Math.floor(Date.now()/1000);
   const b64u=s=>btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  const unsigned=b64u({alg:'RS256',typ:'JWT'})+'.'+b64u({iss:sa.client_email,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
+  const unsigned=b64u({alg:'RS256',typ:'JWT'})+'.'+b64u({iss:sa.client_email,scope:'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
   const b64=sa.private_key.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
   const buf=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
   const key=await crypto.subtle.importKey('pkcs8',buf,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
@@ -592,7 +588,7 @@ async function saveToSheets(){
     // データ行（行番号は2から）
     const rows=exps.map((e,i)=>[
       e.id,e.date,e.catId,e.payer||'',e.name,e.amount,
-      e.status,e.settledAt||'',e.memo||'',e.receipt||'',i+2
+      e.status,e.settledAt||'',(e.receipt||'').startsWith('https://')?e.receipt:'',i+2
     ]);
     const allRows=[...header,...rows];
     // クリアしてから書き込む
@@ -741,10 +737,23 @@ async function addExpense(){
   // 領収書をDriveにアップロード
   let receiptUrl=null;
   if(pendRcpt){
-    setMsg('add-msg','領収書をアップロード中...','');
-    receiptUrl=await uploadToDrive(pendRcpt,'receipt_'+Date.now()+'.jpg');
+    if(!sheetCfg.driveFolderId){
+      setMsg('add-msg','Drive フォルダIDが未設定のため領収書はスキップされます','r');
+      await new Promise(r=>setTimeout(r,1500));
+    } else {
+      setMsg('add-msg','領収書をアップロード中...','');
+      const uploaded=await uploadToDrive(pendRcpt,'receipt_'+Date.now()+'.jpg');
+      // DriveのURLの場合のみ保存（Base64はSheetsに入れない）
+      if(uploaded && uploaded.startsWith('https://drive.google.com/')){
+        receiptUrl=uploaded;
+        setMsg('add-msg','領収書アップロード完了、保存中...','');
+      } else {
+        setMsg('add-msg','領収書アップロード失敗（経費は保存します）','r');
+        await new Promise(r=>setTimeout(r,1500));
+      }
+    }
   }
-  const newExp={id:Date.now(),date,catId:selCat,payer:selPayer,name,amount,status:'pending',settledAt:null,memo,receipt:receiptUrl||null};
+  const newExp={id:Date.now(),date,catId:selCat,payer:selPayer,name,amount,status:'pending',settledAt:null,memo,receipt:receiptUrl};
   exps.unshift(newExp);
   await saveToSheets();
   // メール通知
@@ -896,10 +905,23 @@ function renderAdmin(){
   if(!sheetFocused){
     document.getElementById('sheet-id').value=sheetCfg.id||'';
     document.getElementById('sa-json').value=sheetCfg.sj||'';
-    document.getElementById('drive-folder-id').value=sheetCfg.driveFolderId||'';
+    const scFresh2=JSON.parse(localStorage.getItem('sheet_cfg')||'{}');
+  if(!cloudinaryCfg.cloudName)cloudinaryCfg={cloudName:scFresh2.cloudName||'',uploadPreset:scFresh2.uploadPreset||''};
+  const cnEl=document.getElementById('cloudinary-name');
+  const cpEl=document.getElementById('cloudinary-preset');
+  if(cnEl&&document.activeElement!==cnEl)cnEl.value=cloudinaryCfg.cloudName||'';
+  if(cpEl&&document.activeElement!==cpEl)cpEl.value=cloudinaryCfg.uploadPreset||'';
   }
   document.getElementById('sheets-status').innerHTML=sOk?'<span class="sync-pill s-ok"><i class="ti ti-check"></i> 設定済み・自動同期中</span>':'<span class="sync-pill s-info"><i class="ti ti-info-circle"></i> 未設定</span>';
-  // フォーカス中の入力欄は上書きしない（入力中に消えるのを防ぐ）
+  // localStorageから最新のEmailJS設定を毎回読み直す
+  const ecFresh=JSON.parse(localStorage.getItem('email_cfg')||'{}');
+  emailCfg={
+    notifyEmail:ecFresh.notifyEmail||emailCfg.notifyEmail||'',
+    pubKey:ecFresh.pubKey||emailCfg.pubKey||'',
+    svcId:ecFresh.svcId||emailCfg.svcId||'',
+    tmplId:ecFresh.tmplId||emailCfg.tmplId||''
+  };
+  // フォーカス中の欄は上書きしない
   const emailFields=['notify-email','ejs-pubkey','ejs-svcid','ejs-tmplid'];
   const emailFocused=emailFields.some(id=>document.activeElement===document.getElementById(id));
   if(!emailFocused){
@@ -967,12 +989,14 @@ function delCat(id){
 
 async function saveSheetCfg(){
   const id=document.getElementById('sheet-id').value.trim();const sj=document.getElementById('sa-json').value.trim();
-  const driveFolderId=document.getElementById('drive-folder-id').value.trim();
+  const cloudName=document.getElementById('cloudinary-name').value.trim();
+  const uploadPreset=document.getElementById('cloudinary-preset').value.trim();
+  cloudinaryCfg={cloudName,uploadPreset};
   if(!id||!sj){setMsg('sync-msg','IDとJSONを入力してください','r');return;}
   try{JSON.parse(sj);}catch(e){setMsg('sync-msg','JSONの形式が正しくありません','r');return;}
-  sheetCfg={id,sj,driveFolderId};
+  sheetCfg={id,sj};
   cachedToken=null;tokenExpiry=0;
-  localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj,driveFolderId}));
+  localStorage.setItem('sheet_cfg',JSON.stringify({id,saJson:sj,cloudName:cloudinaryCfg.cloudName,uploadPreset:cloudinaryCfg.uploadPreset}));
   setMsg('sync-msg','設定を保存しました。読み込み中...','');
   const ok=await loadFromSheets();
   if(ok){
@@ -993,8 +1017,11 @@ function saveEmailCfg(){
   emailCfg={notifyEmail,pubKey,svcId,tmplId};
   localStorage.setItem('email_cfg',JSON.stringify(emailCfg));
   emailjs.init(pubKey);
-  setMsg('email-msg','✓ メール設定を保存しました','g');
-  renderAdmin();
+  // renderAdmin()を呼ばず入力欄の値を保持したままステータスだけ更新
+  const eOk=true;
+  const statusEl=document.getElementById('email-status');
+  if(statusEl)statusEl.innerHTML='<span class="sync-pill s-ok"><i class="ti ti-check"></i> メール通知設定済み</span>';
+  setMsg('email-msg','✓ 保存しました','g');
 }
 
 async function manualSync(){
